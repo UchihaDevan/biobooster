@@ -1,109 +1,137 @@
-// Configuration Variables
-const PITCH_REVEAL_DELAY = 30000; // 30 seconds - Time before pitch section appears
-const COUNTDOWN_DURATION = 900; // 15 minutes in seconds
+// ============================
+// Config Variables
+// ============================
+const PITCH_REVEAL_DELAY_MS = (33 * 60 + 3) * 1000; // 33.03s - tempo para revelar o pitch APÓS o play  <-- alterado
+const COUNTDOWN_DURATION = 900; // 15 min (segundos)
 const VIEWER_COUNT_MIN = 200;
 const VIEWER_COUNT_MAX = 350;
-const VIEWER_UPDATE_INTERVAL = 5000; // Update viewer count every 5 seconds
+const VIEWER_UPDATE_INTERVAL = 5000;
 const STOCK_COUNT_MIN = 30;
 const STOCK_COUNT_MAX = 60;
 
+// ============================
 // State Variables
+// ============================
 let countdownInterval;
 let viewerInterval;
 let timeRemaining = COUNTDOWN_DURATION;
 let currentViewers = Math.floor(Math.random() * (VIEWER_COUNT_MAX - VIEWER_COUNT_MIN + 1)) + VIEWER_COUNT_MIN;
 let currentStock = Math.floor(Math.random() * (STOCK_COUNT_MAX - STOCK_COUNT_MIN + 1)) + STOCK_COUNT_MIN;
 
+// NEW: controla disparo único do timer do pitch
+let pitchTimerStarted = false;
+let pitchTimeoutId = null;
+
+// ============================
 // Initialize on page load
+// ============================
 document.addEventListener('DOMContentLoaded', function() {
     initializeViewerCounter();
-    initializePitchReveal();
+    // initializePitchReveal(); // <-- REMOVIDO: não iniciamos mais no carregamento da página
     setupVideoPlaceholder();
     setupCTAButtons();
+    initScrollAnimations();
+    wireAnchorSmoothScroll();
+    protectVideoContextMenu();
+    startTimeOnPageCounter();
 });
 
-// Video Placeholder Click Handler
+// ============================
+// Video Placeholder + gatilho do play
+// ============================
 function setupVideoPlaceholder() {
     const videoPlaceholder = document.querySelector('.video-placeholder');
     const vslVideo = document.getElementById('vsl-video');
-    
+
+    // 1) Se for <video> HTML5, dispare quando o usuário der play
+    if (vslVideo && vslVideo.tagName.toLowerCase() === 'video') {
+        vslVideo.addEventListener('play', startPitchTimerOnFirstPlay); // <-- novo
+    }
+
+    // 2) Caso você use um placeholder clicável para iniciar o player/iframe da Vturb
     if (videoPlaceholder) {
         videoPlaceholder.addEventListener('click', function() {
-            // Replace with actual video URL
-            // vslVideo.src = 'YOUR_VIDEO_URL_HERE';
+            // Aqui você iniciaria de fato seu player da Vturb (trocar src/mostrar iframe etc)
+            // Exemplo (comente/ajuste conforme seu embed real):
+            // vslVideo.src = 'SUA_URL_DE_EMBED_DA_VTURB';
             // videoPlaceholder.style.display = 'none';
             // vslVideo.style.display = 'block';
-            
-            // For demo purposes, just hide placeholder
+
+            // Dispara o timer do pitch no "play" do usuário via placeholder
+            startPitchTimerOnFirstPlay(); // <-- novo
+
+            // Demo antigo:
             alert('Video player would start here. Replace with actual video embed URL in the script.');
         });
     }
+
+    // 3) (Opcional) Se o Vturb estiver em <iframe>, você pode tentar usar postMessage da plataforma
+    //    Caso seu embed dispare mensagens "play", você pode ouvir assim:
+    // window.addEventListener('message', (e) => {
+    //     try {
+    //         const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+    //         if (data && (data.event === 'play' || data.type === 'play')) {
+    //             startPitchTimerOnFirstPlay();
+    //         }
+    //     } catch(_) {}
+    // });
 }
 
-// Viewer Counter Animation
-function initializeViewerCounter() {
-    const viewerCountElement = document.getElementById('viewer-count');
-    
-    // Update viewer count periodically
-    viewerInterval = setInterval(() => {
-        // Random fluctuation between -5 and +8
-        const change = Math.floor(Math.random() * 14) - 5;
-        currentViewers = Math.max(VIEWER_COUNT_MIN, Math.min(VIEWER_COUNT_MAX, currentViewers + change));
-        
-        // Animate the number change
-        animateValue(viewerCountElement, parseInt(viewerCountElement.textContent), currentViewers, 1000);
-    }, VIEWER_UPDATE_INTERVAL);
+// Dispara o contador do pitch só uma vez (primeiro play)
+function startPitchTimerOnFirstPlay() {
+    if (pitchTimerStarted) return; // evita múltiplos disparos
+    pitchTimerStarted = true;
+
+    // Inicia a contagem para revelar o pitch
+    pitchTimeoutId = setTimeout(() => {
+        revealPitchAndStartUrgency(); // <-- substitui o antigo initializePitchReveal()
+    }, PITCH_REVEAL_DELAY_MS);
 }
 
-// Pitch Section Reveal
-function initializePitchReveal() {
-    setTimeout(() => {
-        const pitchSection = document.getElementById('pitch-section');
-        pitchSection.classList.remove('hidden');
-        
-        // Smooth scroll to pitch section
-        pitchSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        
-        // Initialize countdown timer
-        initializeCountdown();
-        
-        // Initialize stock counter
-        updateStockCount();
-    }, PITCH_REVEAL_DELAY);
+// ============================
+// Pitch Section (reveal + timers)
+// ============================
+function revealPitchAndStartUrgency() {
+    const pitchSection = document.getElementById('pitch-section');
+    if (!pitchSection) return;
+
+    pitchSection.classList.remove('hidden');
+
+    // Smooth scroll até o pitch
+    pitchSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Inicializa contador regressivo e estoque
+    initializeCountdown();
+    updateStockCount();
 }
 
-// Countdown Timer
+// (mantido) Countdown Timer
 function initializeCountdown() {
     const minutesElement = document.getElementById('minutes');
     const secondsElement = document.getElementById('seconds');
-    
+
     countdownInterval = setInterval(() => {
         if (timeRemaining > 0) {
             timeRemaining--;
-            
             const minutes = Math.floor(timeRemaining / 60);
             const seconds = timeRemaining % 60;
-            
             minutesElement.textContent = String(minutes).padStart(2, '0');
             secondsElement.textContent = String(seconds).padStart(2, '0');
         } else {
             clearInterval(countdownInterval);
-            
-            // Timer expired - make CTA more aggressive
             updateExpiredTimerUI();
         }
     }, 1000);
 }
 
-// Update UI when timer expires
+// (mantido) UI quando expira
 function updateExpiredTimerUI() {
     const timerHeadline = document.querySelector('.timer-headline');
     const timerWarning = document.querySelector('.timer-warning');
-    
-    timerHeadline.textContent = '⚠️ TIME\'S UP! LAST CHANCE TO SAVE! ⚠️';
-    timerWarning.textContent = 'This discount is about to disappear forever - Act NOW!';
-    
-    // Make all CTA buttons more urgent
+
+    if (timerHeadline) timerHeadline.textContent = '⚠️ TIME\'S UP! LAST CHANCE TO SAVE! ⚠️';
+    if (timerWarning) timerWarning.textContent = 'This discount is about to disappear forever - Act NOW!';
+
     const ctaButtons = document.querySelectorAll('.cta-button');
     ctaButtons.forEach(button => {
         button.style.animation = 'pulse-button 1s infinite';
@@ -113,34 +141,32 @@ function updateExpiredTimerUI() {
     });
 }
 
-// Stock Counter
+// (mantido) Estoque
 function updateStockCount() {
     const stockCountElement = document.getElementById('stock-count');
     if (stockCountElement) {
         stockCountElement.textContent = currentStock;
-        
-        // Decrease stock randomly
+
         setInterval(() => {
             if (currentStock > STOCK_COUNT_MIN) {
-                const shouldDecrease = Math.random() > 0.7; // 30% chance to decrease
+                const shouldDecrease = Math.random() > 0.7;
                 if (shouldDecrease) {
                     currentStock--;
                     animateValue(stockCountElement, currentStock + 1, currentStock, 500);
                 }
             }
-        }, 15000); // Check every 15 seconds
+        }, 15000);
     }
 }
 
-// Animate number changes
+// (mantido) Animação numérica
 function animateValue(element, start, end, duration) {
     const range = end - start;
-    const increment = range / (duration / 16); // 60fps
+    const increment = range / (duration / 16);
     let current = start;
-    
+
     const timer = setInterval(() => {
         current += increment;
-        
         if ((increment > 0 && current >= end) || (increment < 0 && current <= end)) {
             element.textContent = Math.round(end);
             clearInterval(timer);
@@ -150,120 +176,62 @@ function animateValue(element, start, end, duration) {
     }, 16);
 }
 
-// CTA Button Click Handlers
-function setupCTAButtons() {
-    const ctaButtons = document.querySelectorAll('.cta-button');
-    
-    ctaButtons.forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            
-            // Get package info from parent card
-            const card = this.closest('.pricing-card');
-            const packageName = card.querySelector('.package-name').textContent;
-            const price = card.querySelector('.total-price').textContent;
-            
-            // Show confirmation
-            const confirmed = confirm(`You're about to purchase: ${packageName}\n${price}\n\nProceed to checkout?`);
-            
-            if (confirmed) {
-                // Redirect to checkout page
-                // window.location.href = 'checkout.html?package=' + encodeURIComponent(packageName);
-                
-                // For demo purposes
-                alert('Redirecting to secure checkout...\n\nIn production, this would go to your payment processor.');
-            }
-        });
-        
-        // Add hover effect
-        button.addEventListener('mouseenter', function() {
-            this.style.transform = 'translateY(-3px) scale(1.02)';
-        });
-        
-        button.addEventListener('mouseleave', function() {
-            this.style.transform = 'translateY(0) scale(1)';
-        });
-    });
-}
-
-// Add scroll animations
-window.addEventListener('scroll', function() {
-    const elements = document.querySelectorAll('.pricing-card, .testimonial-card');
-    
-    elements.forEach(element => {
-        const elementTop = element.getBoundingClientRect().top;
-        const elementBottom = element.getBoundingClientRect().bottom;
-        
-        // Check if element is in viewport
-        if (elementTop < window.innerHeight && elementBottom > 0) {
-            element.style.opacity = '1';
-            element.style.transform = 'translateY(0)';
-        }
-    });
-});
-
-// Initialize scroll animations
-document.addEventListener('DOMContentLoaded', function() {
+// ============================
+// Extras (mantidos/organizados)
+// ============================
+function initScrollAnimations() {
     const elements = document.querySelectorAll('.pricing-card, .testimonial-card');
     elements.forEach(element => {
         element.style.opacity = '0';
         element.style.transform = 'translateY(20px)';
         element.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
     });
-});
 
-// Add exit intent popup (optional - can be enabled)
-function setupExitIntent() {
-    let hasShownExitPopup = false;
-    
-    document.addEventListener('mouseout', function(e) {
-        if (!hasShownExitPopup && e.clientY < 10) {
-            hasShownExitPopup = true;
-            
-            const shouldStay = confirm('WAIT! Don\'t leave without claiming your discount!\n\nGet up to 60% OFF + FREE Shipping today only!\n\nClick OK to see our special offers.');
-            
-            if (shouldStay) {
-                // Scroll to first CTA
-                document.querySelector('.cta-section').scrollIntoView({ behavior: 'smooth' });
+    window.addEventListener('scroll', function() {
+        const els = document.querySelectorAll('.pricing-card, .testimonial-card');
+        els.forEach(el => {
+            const rect = el.getBoundingClientRect();
+            if (rect.top < window.innerHeight && rect.bottom > 0) {
+                el.style.opacity = '1';
+                el.style.transform = 'translateY(0)';
             }
+        });
+    });
+}
+
+// Anchor smooth scroll
+function wireAnchorSmoothScroll() {
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
+}
+
+// Bloqueio de right-click no vídeo
+function protectVideoContextMenu() {
+    document.addEventListener('contextmenu', function(e) {
+        if (e.target.closest('.video-wrapper')) {
+            e.preventDefault();
+            return false;
         }
     });
 }
 
-// Uncomment to enable exit intent
-// setupExitIntent();
+// Contador de tempo na página (analytics)
+function startTimeOnPageCounter() {
+    let timeOnPage = 0;
+    setInterval(() => {
+        timeOnPage++;
+        // console.log('Time on page:', timeOnPage, 'seconds');
+    }, 1000);
+}
 
-// Track time on page for analytics
-let timeOnPage = 0;
-setInterval(() => {
-    timeOnPage++;
-    // Send to analytics if needed
-    // console.log('Time on page:', timeOnPage, 'seconds');
-}, 1000);
-
-// Prevent right-click on video (optional protection)
-document.addEventListener('contextmenu', function(e) {
-    if (e.target.closest('.video-wrapper')) {
-        e.preventDefault();
-        return false;
-    }
-});
-
-// Add smooth scrolling for all anchor links
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        const target = document.querySelector(this.getAttribute('href'));
-        if (target) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    });
-});
-
-// Console message for developers
+// Console logs
 console.log('%c🚀 VSL Landing Page Loaded Successfully!', 'color: #27ae60; font-size: 16px; font-weight: bold;');
 console.log('%cConfiguration:', 'color: #3498db; font-size: 14px; font-weight: bold;');
-console.log('- Pitch reveal delay:', PITCH_REVEAL_DELAY / 1000, 'seconds');
+console.log('- Pitch reveal delay (ms) after play:', PITCH_REVEAL_DELAY_MS);
 console.log('- Countdown duration:', COUNTDOWN_DURATION / 60, 'minutes');
 console.log('- Viewer count range:', VIEWER_COUNT_MIN, '-', VIEWER_COUNT_MAX);
-
